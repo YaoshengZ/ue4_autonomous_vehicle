@@ -1,8 +1,8 @@
 # UE4_Autonomous_Vehicle
 This project is based on Tronis (UE4) simulation environment with OpenCV and implements some ADAS funtions.
 ## Blue Print Settings
-![alt text](https://github.com/YaoshengZ/ue4_autonomous_vehicle/blueprint_settings/blueprint_settings1.png)
-![alt text](https://github.com/YaoshengZ/ue4_autonomous_vehicle/blueprint_settings/blueprint_settings2.png)
+![Alt text](https://github.com/YaoshengZ/ue4_autonomous_vehicle/blueprint_settings/blueprint_settings1.png)
+![Alt text](https://github.com/YaoshengZ/ue4_autonomous_vehicle/blueprint_settings/blueprint_settings2.png)
 ## Red Traffic Light Detection
 1. HLS detector: The red pixel on the tronis image will be filtered. The hls parameters that determine the range that how "red" the red light can be could be adjusted base on environment.
 2. ROI crop: Crop out the region of the image that the where the traffic light could appear when the car is moving. 
