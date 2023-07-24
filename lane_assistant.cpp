@@ -19,39 +19,39 @@ using namespace cv;
 
 class LaneAssistant
 {
-	public:
-		LaneAssistant()
-		{
-		}
+    public:
+	LaneAssistant()
+	{
+	}
 
-		bool processData( tronis::CircularMultiQueuedSocket& socket )
+	bool processData( tronis::CircularMultiQueuedSocket& socket )
         {
             socket.send( tronis::SocketData( "Speed: " + to_string( ego_velocity_ ) ) );  // send ego speed via socket
             getSteeringInput( socket );                                                   // send steering value via socket
             getThrottleInput( socket );                                                   // send throttle value via socket
-			return true;
-		}
+	    return true;
+	}
 
-	protected:
-		std::string image_name_;
-		cv::Mat image_;
+    protected:
+        std::string image_name_;
+	cv::Mat image_;
         tronis::LocationSub ego_location_;
         tronis::OrientationSub ego_orientation_;
         tronis::BoxDataSub boxes_;
         double ego_velocity_;
 
-		//++++++++++++++++++++++red light detection parameters+++++++++++++++++++++++
+	//++++++++++++++++++++++red light detection parameters+++++++++++++++++++++++
         cv::Mat redlightraw;
-		cv::Mat red_light_img;
+	cv::Mat red_light_img;
         cv::Mat redlight_roi_img;
 
-	    //+++++++++++++++++++++++++lane detection parameters++++++++++++++++++++++++
-		Point ego_leftS, ego_leftE;     // ego left lane start and end point
+	//+++++++++++++++++++++++++lane detection parameters++++++++++++++++++++++++
+	Point ego_leftS, ego_leftE;     // ego left lane start and end point
         Point ego_rightS, ego_rightE;   // ego right lane start and end point
         Point directionS, directionE;   // car driving direction
         double rows = 512, cols = 720;  // original Picture size (720, 512).
 
-		//++++++++++++++++++++++++steering control parameters+++++++++++++++++++++++
+	//++++++++++++++++++++++++steering control parameters+++++++++++++++++++++++
         double steering_norm = 0;       // normalized steering input value
         float STEER_P = 1;              // P-Factor for STEER PID controller
         float STEER_I = 0.00025;        // I-Factor for STEER PID controller
@@ -60,7 +60,7 @@ class LaneAssistant
         double steer_error_P_old = 0;   // steering P at t-1
         double steer_error_I_sum = 0;   // steering I sum
 
-		//++++++++++++++++++++++throttle control parameters++++++++++++++++++++++++++
+	//++++++++++++++++++++++throttle control parameters++++++++++++++++++++++++++
         double throttle_norm = 0;       // normalized throttle input value
         double VEL_TAR = 60;            // Max velocity without preceeding vehicle
         int ACC_P = 45;                 // P-Factor for ACCELERATION PID controller
@@ -84,8 +84,8 @@ class LaneAssistant
         chrono::time_point<chrono::steady_clock> t_dist_start;  // stop watch
         chrono::time_point<chrono::steady_clock> t_dist_stop;
 
-		//--------------------red light detection----------------------
-		void redLightDetection()
+	//--------------------red light detection----------------------
+	void redLightDetection()
         {
             // 1. set a red hls detector
             cv::Mat kernel = getStructuringElement( MORPH_RECT, Size( 3, 3 ) );
@@ -96,98 +96,99 @@ class LaneAssistant
             red_light_img.convertTo( red_light_img, CV_8UC1 );
             dilate( red_light_img, red_light_img, kernel );
 
-			// 2. make a red light roi mask 
+	    // 2. make a red light roi mask 
             cv::Mat redlightmask = Mat::zeros( image_.size(), red_light_img.type() );
             const int num = 4;
             Point points[1][num] = {Point( cols * 0.4, 0 ),          
-				                    Point( cols * 0.4, rows * 0.35 ),
+				    Point( cols * 0.4, rows * 0.35 ),
                                     Point( cols * 0.6, rows * 0.35 ), 
-				                    Point( cols * 0.6, 0 )};
+				    Point( cols * 0.6, 0 )};
             const Point* polygon = points[0];
             fillConvexPoly( redlightmask, polygon, num, Scalar( 255 ) );
 
-			// 3. use red light roi mask to filter red light img
+	    // 3. use red light roi mask to filter red light img
             cv::bitwise_and( red_light_img, redlightmask, redlight_roi_img );
             //imshow( "Red Light Detection roi", redlight_roi_img );
         }
 		
-		//----------------------lane detection------------------------
+	//----------------------lane detection------------------------
         vector<Vec4d> setLanes()
         {
             redLightDetection();
 
-			// 1a-1. from tronis image to gaussian blurred image
-			cv::Mat blur_img; 
+	    // 1a-1. from tronis image to gaussian blurred image
+	    cv::Mat blur_img; 
             GaussianBlur( image_, blur_img, Size( 3, 3 ), 0, 0, BORDER_DEFAULT );
 
-			// 1a-2. from gaussian blurred image to grayscale image
+	    // 1a-2. from gaussian blurred image to grayscale image
             cv::Mat gray_img;
             cvtColor( blur_img, gray_img, cv::COLOR_BGR2GRAY );
             
-			// from grayscale image to binary image
+	    // from grayscale image to binary image
             //cv::Mat binary_img; 
             //cv::threshold( gray_img, binary_img, 190, 255, cv::THRESH_BINARY );
 			
-			// 1a-3. from binary image to edge image
+	    // 1a-3. from binary image to edge image
             cv::Mat edge_img; 
             Canny( gray_img, edge_img, 200, 250 );
             cv::Mat kernel = getStructuringElement( MORPH_RECT, Size( 3, 3 ) );    
             dilate( edge_img, edge_img, kernel );    // dilation of edges
             
-			// 1b-1. from tronis image to white hls image
+	    // 1b-1. from tronis image to white hls image
             cv::Mat hlsraw;
             cv::Mat white_hls_img; 
-			cvtColor( image_, hlsraw, cv::COLOR_BGR2HLS );
+	    cvtColor( image_, hlsraw, cv::COLOR_BGR2HLS );
             Scalar white_lower( 0, 100, 0 );
             Scalar white_upper( 180, 155, 255 );
             inRange( hlsraw, white_lower, white_upper, white_hls_img );
             white_hls_img.convertTo( white_hls_img, CV_8UC1 );
             dilate( white_hls_img, white_hls_img, kernel );    // dilation of white hls image
 
-			// 1b-2. from tronis image to yellow hls image
+	    // 1b-2. from tronis image to yellow hls image
             cv::Mat yellow_hls_img; 
-			cvtColor( image_, hlsraw, cv::COLOR_BGR2HLS );
+	    cvtColor( image_, hlsraw, cv::COLOR_BGR2HLS );
             Scalar yellow_lower( 10, 0 ,75 );
             Scalar yellow_upper( 23, 255, 255 );
             inRange( hlsraw, yellow_lower, yellow_upper, yellow_hls_img );
             yellow_hls_img.convertTo( yellow_hls_img, CV_8UC1 );
             dilate( yellow_hls_img, yellow_hls_img, kernel );    // dilation of yellow hls image
 
-			// 1b-3. choose between white hls image and yellow hls image
+	    // 1b-3. choose between white hls image and yellow hls image
             cv::Mat hls_img;
             cv::bitwise_or( yellow_hls_img, white_hls_img, hls_img );
-			/*
+	    /*
             hls_img = white_hls_img;
 			if (countNonZero(white_hls_img) < countNonZero(yellow_hls_img))
 			{
                 hls_img = yellow_hls_img;
 			}
-			*/
+	    */
 
-			// 2. combine edge image with hls image to get edge hls image
+	    // 2. combine edge image with hls image to get edge hls image
             cv::Mat edge_hls_img; 
             cv::bitwise_and( edge_img, hls_img, edge_hls_img );
 
             // 3. make a roi mask
-            cv::Mat mask = Mat::zeros( image_.size(), edge_hls_img.type() );
-            const int num = 8;
-            Point points[1][num] = {Point( 0, rows * 0.95 ),
-                                    Point( 0, rows * 0.65 ),
-                                    Point( cols * 0.4, rows * 0.55 ), 
-				                    Point( cols * 0.6, rows * 0.55 ),
-                                    Point( cols, rows * 0.65 ),
-                                    Point( cols, rows * 0.95 ),
-                                    Point( cols * 0.7, rows * 0.78 ),
-			                        Point( cols * 0.3, rows * 0.78 )};
-            const Point* polygon = points[0];
-            fillConvexPoly( mask, polygon, num, Scalar( 255 ) );
+            Mat mask( rows, cols, CV_8UC1, Scalar( 0 ) );  // Place the camera at Innenspiegel
+            vector<Point> pts;
+            vector<vector<Point>> v_pts;
+            pts.push_back( Point( 0, rows ) );
+            pts.push_back( Point( 0, rows * 0.75 ) );
+            pts.push_back( Point( cols * 0.4, rows * 0.55 ) );
+            pts.push_back( Point( cols * 0.6, rows * 0.55 ) );
+            pts.push_back( Point( cols, rows * 0.75 ) );
+            pts.push_back( Point( cols, rows ) );
+            pts.push_back( Point( cols * 0.8, rows * 0.75 ) );
+            pts.push_back( Point( cols * 0.2, rows * 0.75 ) );
+            v_pts.push_back( pts );
+            fillPoly( mask, v_pts, 255 );
 
-			// 4. from edge hsl image to roi image
+	    // 4. from edge hsl image to roi image
             cv::Mat roi_img;
             cv::bitwise_and( edge_hls_img, mask, roi_img );
             imshow( "Region of Interest", roi_img );    // show the roi image
 
-			// 5. from roi image to get hough lines set
+	    // 5. from roi image to get hough lines set
             vector<Vec4d> raw_lanes;                                         // will hold all the results of the detection
             HoughLinesP( roi_img, raw_lanes, 1, CV_PI / 180, 100, 25, 25 );   // Probabilistic Line Transform
 
@@ -278,15 +279,15 @@ class LaneAssistant
                   Scalar( 0, 255, 0 ), 3, LINE_AA );
         }
 
-		//---------------------- Steering control--------------------
-		void setSteeringInput()
+	//---------------------- Steering control--------------------
+	void setSteeringInput()
         {
-			double steer_error_P = directionS.x - cols / 2; // use directionS.x --> react earlier + smoother, use directionE.x --> react later + jerky 
+	    double steer_error_P = directionS.x - cols / 2; // use directionS.x --> react earlier + smoother, use directionE.x --> react later + jerky 
             double steer_error_D = steer_error_P - steer_error_P_old;
             double steer_tar = STEER_P * steer_error_P + STEER_I * steer_error_I_sum + STEER_D * steer_error_D;
             steer_error_P_old = steer_error_P;
             steer_error_I_sum += steer_error_P;
-			steering_norm = 2 * ( steer_tar + STEER_MAX ) / ( 2 * STEER_MAX ) - 1; 
+	    steering_norm = 2 * ( steer_tar + STEER_MAX ) / ( 2 * STEER_MAX ) - 1; 
             if( steering_norm > 1 )                         // normalize the steering input to between -1 and 1
             {
                 steering_norm = 1;
@@ -297,14 +298,14 @@ class LaneAssistant
             }
         }
 
-		void getSteeringInput( tronis::CircularMultiQueuedSocket& socket )
+	void getSteeringInput( tronis::CircularMultiQueuedSocket& socket )
         {
             setSteeringInput();
             string prefix_steering = "Steering: ";
             socket.send( tronis::SocketData( prefix_steering + to_string( steering_norm ) ) );
         }
 
-		//---------------------throttle control-------------------------
+	//---------------------throttle control-------------------------
         void accelerationControl()
         {
             double vel_curr = ego_velocity_ * ( 36. / 1000. );  // from cm/s to km/h
@@ -312,9 +313,7 @@ class LaneAssistant
             {
                 // stop stopwatch and take time for integral and derivative
                 t_dist_stop = chrono::steady_clock::now();
-                t_dist_diff =
-                    chrono::duration_cast<chrono::milliseconds>( t_dist_stop - t_dist_start )
-                        .count();
+                t_dist_diff = chrono::duration_cast<chrono::milliseconds>( t_dist_stop - t_dist_start ).count();
 
                 double dist_tar = 0.5 * vel_curr;  // set target distance to half of current speed, at least 7m
                 if( vel_curr < 14 )
@@ -342,8 +341,7 @@ class LaneAssistant
                           dist_error_D * ( (double)DIST_D / 1e6 );
 
                 ///// in braking scenarios, remove the offset again, including hysteresis
-                //         if( ( dist_curr < DIST_TAR_SLOW || abs( dist_curr - DIST_TAR_SLOW ) < 3 )
-                //         )
+                //         if( ( dist_curr < DIST_TAR_SLOW || abs( dist_curr - DIST_TAR_SLOW ) < 3 ))
                 //         {
                 //             vel_tar -= vel_curr;
                 //         }
@@ -354,8 +352,7 @@ class LaneAssistant
                 }
 
                 // reduce I when driving slow and getting close to the target vehicle
-                if( ( dist_curr < DIST_TAR_SLOW || abs( dist_curr - DIST_TAR_SLOW ) < 3 ) &&
-                    vel_tar < 5 )
+                if( ( dist_curr < DIST_TAR_SLOW || abs( dist_curr - DIST_TAR_SLOW ) < 3 ) && vel_tar < 5 )
                 {
                     dist_error_I_sum *= 0.9;
                     cout << "dist I reduction" << endl;
@@ -396,10 +393,10 @@ class LaneAssistant
         }
         void velocityControl( double vel_c, double vel_t, bool acc_flag )
         {
-			// if acc is active, then limit the target velocity by VEL_TAR (e.g. speed signs)
+	// if acc is active, then limit the target velocity by VEL_TAR (e.g. speed signs)
             if( acc_flag )
             {				
-				if( VEL_TAR < vel_t )
+		if( VEL_TAR < vel_t )
                 {
                     vel_t = VEL_TAR;
                 }
@@ -425,8 +422,7 @@ class LaneAssistant
             }
 
             // reduce I when driving slow and getting close to the target vehicle
-            if( ( dist_curr < DIST_TAR_SLOW || abs( dist_curr - DIST_TAR_SLOW ) < 3 ) &&
-                vel_tar < 5 )
+            if( ( dist_curr < DIST_TAR_SLOW || abs( dist_curr - DIST_TAR_SLOW ) < 3 ) && vel_tar < 5 )
             {
                 vel_error_I_sum *= 0.;
                 cout << "vel I  reduction" << endl;
@@ -482,7 +478,7 @@ class LaneAssistant
                  << endl;
         }
 
-		void getThrottleInput( tronis::CircularMultiQueuedSocket& socket )
+	void getThrottleInput( tronis::CircularMultiQueuedSocket& socket )
         {
             string prefix_throttle = "Throttle: ";
             socket.send( tronis::SocketData( prefix_throttle + to_string( throttle_norm ) ) );
@@ -564,7 +560,7 @@ class LaneAssistant
 		}
 
 	protected:
-		// Function to show an openCV image in a separate window
+	// Function to show an openCV image in a separate window
         void showImage( std::string image_name, cv::Mat image )
         {
             cv::Mat out = image;
@@ -576,8 +572,8 @@ class LaneAssistant
             cv::imshow( image_name.c_str(), out );
         }
 
-		// Function to convert tronis image to openCV image
-		bool processImage( const std::string& base_name, const tronis::Image& image )
+	// Function to convert tronis image to openCV image
+	bool processImage( const std::string& base_name, const tronis::Image& image )
         {
             std::cout << "processImage" << std::endl;
             if( image.empty() )
